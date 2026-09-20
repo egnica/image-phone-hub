@@ -1,5 +1,4 @@
 import { DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
-import { isAuthenticated } from "@/lib/auth";
 import {
   keyIsAllowed,
   publicUrlForKey,
@@ -18,21 +17,26 @@ function mediaTypeForKey(key) {
   return "image";
 }
 
-export async function GET(request) {
-  if (!isAuthenticated(request)) {
-    return Response.json({ error: "Unauthorized." }, { status: 401 });
-  }
+export async function GET() {
+  const prefix = normalizePrefix(S3_PREFIX);
+  const contents = [];
+  let continuationToken;
 
-  const result = await s3.send(
-    new ListObjectsV2Command({
-      Bucket: S3_BUCKET,
-      Prefix: normalizePrefix(S3_PREFIX),
-      MaxKeys: 1000,
-    }),
-  );
+  do {
+    const result = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: S3_BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
 
-  const items = (result.Contents || [])
-    .filter((item) => item.Key && item.Key !== normalizePrefix(S3_PREFIX))
+    contents.push(...(result.Contents || []));
+    continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  const items = contents
+    .filter((item) => item.Key && item.Key !== prefix)
     .map((item) => ({
       key: item.Key,
       name: item.Key.split("/").pop(),
@@ -47,10 +51,6 @@ export async function GET(request) {
 }
 
 export async function DELETE(request) {
-  if (!isAuthenticated(request)) {
-    return Response.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
   const body = await request.json().catch(() => ({}));
   const key = body.key;
   if (!keyIsAllowed(key)) {
