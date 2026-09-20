@@ -3,7 +3,7 @@
   width: 100%;
   max-width: 980px;
   margin: 0 auto;
-  padding: max(24px, env(safe-area-inset-top)) 18px calc(44px + env(safe-area-inset-bottom));
+  padding: max(24px, env(safe-area-inset-top)) 18px calc(110px + env(safe-area-inset-bottom));
   color: #f8fafc;
 }
 
@@ -88,7 +88,11 @@
 .publishButton svg,
 .mediaActions svg,
 .successActions svg,
-.refreshButton svg {
+.refreshButton svg,
+.selectionCheck svg,
+.bulkActions svg,
+.viewerTopbar svg,
+.viewerActions svg {
   width: 22px;
   height: 22px;
   fill: none;
@@ -138,7 +142,8 @@
 }
 
 .textButton,
-.refreshButton {
+.refreshButton,
+.selectButton {
   border: 1px solid #2a3140;
   background: #111722;
   color: #cbd5e1;
@@ -146,10 +151,17 @@
   cursor: pointer;
 }
 
-.textButton {
+.textButton,
+.selectButton {
   border-radius: 999px;
-  padding: 9px 13px;
+  padding: 9px 14px;
   font-size: 0.82rem;
+}
+
+.selectButtonActive {
+  border-color: #818cf8;
+  background: #312e81;
+  color: #eef2ff;
 }
 
 .refreshButton {
@@ -158,6 +170,12 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
+}
+
+.libraryTools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .editorGrid {
@@ -409,7 +427,9 @@
 }
 
 .successActions,
-.mediaActions {
+.mediaActions,
+.viewerActions,
+.bulkActions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -418,7 +438,10 @@
 .successActions button,
 .successActions a,
 .mediaActions button,
-.mediaActions a {
+.mediaActions a,
+.viewerActions button,
+.viewerActions a,
+.bulkActions button {
   min-height: 38px;
   border: 1px solid #2b3445;
   border-radius: 10px;
@@ -433,6 +456,13 @@
   font-size: 0.8rem;
   text-decoration: none;
   cursor: pointer;
+}
+
+.successActions button:disabled,
+.viewerActions button:disabled,
+.bulkActions button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .librarySection {
@@ -477,14 +507,26 @@
   min-width: 0;
   border-radius: 18px;
   overflow: hidden;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.selectedCard {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25), 0 18px 44px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
 }
 
 .mediaPreview {
   position: relative;
+  width: 100%;
   display: block;
   aspect-ratio: 1 / 1;
   overflow: hidden;
+  border: 0;
+  padding: 0;
   background: #080b12;
+  cursor: pointer;
+  text-align: inherit;
 }
 
 .mediaPreview img,
@@ -493,6 +535,7 @@
   height: 100%;
   display: block;
   object-fit: cover;
+  pointer-events: none;
 }
 
 .typeBadge {
@@ -505,6 +548,32 @@
   padding: 5px 8px;
   font-size: 0.68rem;
   backdrop-filter: blur(8px);
+}
+
+.selectionCheck {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  background: rgba(8, 11, 18, 0.5);
+  color: white;
+  backdrop-filter: blur(8px);
+}
+
+.selectionCheck svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.6;
+}
+
+.selectionCheckActive {
+  border-color: #6366f1;
+  background: #6366f1;
 }
 
 .mediaInfo {
@@ -538,8 +607,151 @@
   font-size: 0.72rem;
 }
 
-.mediaActions .deleteButton {
+.mediaActions .deleteButton,
+.viewerActions .viewerDelete,
+.bulkActions .bulkDelete {
   color: #fca5a5;
+}
+
+.bulkBar {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 40;
+  width: min(720px, calc(100% - 24px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(15, 20, 30, 0.94);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.bulkBar > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.bulkBar strong {
+  font-size: 0.9rem;
+}
+
+.bulkBar span {
+  color: #7f8a9d;
+  font-size: 0.7rem;
+}
+
+.bulkActions {
+  flex: 0 0 auto;
+}
+
+.bulkActions button {
+  min-height: 40px;
+}
+
+.viewerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  background: rgba(3, 6, 12, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.viewer {
+  width: min(960px, 100%);
+  max-height: calc(100svh - 24px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #293244;
+  border-radius: 22px;
+  background: #0c111a;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+}
+
+.viewerTopbar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #222b3a;
+}
+
+.viewerTopbar > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.viewerTopbar strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.viewerTopbar span {
+  color: #7f8a9d;
+  font-size: 0.72rem;
+}
+
+.viewerTopbar button {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid #2b3445;
+  border-radius: 50%;
+  background: #151b27;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.viewerMedia {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  background: #05070b;
+}
+
+.viewerMedia img,
+.viewerMedia video {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100svh - 190px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.viewerMedia video {
+  width: 100%;
+}
+
+.viewerActions {
+  padding: 12px 14px;
+  border-top: 1px solid #222b3a;
+  background: #0f141e;
+}
+
+.viewerActions button,
+.viewerActions a {
+  min-height: 42px;
 }
 
 @media (max-width: 760px) {
@@ -568,6 +780,42 @@
   .mediaGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+}
+
+@media (max-width: 560px) {
+  .bulkBar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .bulkActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .viewerBackdrop {
+    padding: 0;
+  }
+
+  .viewer {
+    width: 100%;
+    max-height: 100svh;
+    min-height: 100svh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .viewerMedia img,
+  .viewerMedia video {
+    max-height: calc(100svh - 190px);
+  }
+
+  .viewerActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
 
