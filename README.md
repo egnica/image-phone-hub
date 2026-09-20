@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Media Hub
 
-## Getting Started
+A mobile-first Next.js utility for uploading website-ready images and videos from a phone to S3.
 
-First, run the development server:
+## Storage
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Bucket: `latestartbucket`
+- Prefix: `mobile-phone/`
+- Default region: `us-east-2`
+- Amplify Hosting uses the `image-phone-hub-amplify-role` compute role. The role is scoped to list, read, upload, and delete only under the `mobile-phone/` prefix.
+
+## Features
+
+- Private password screen with a 30-day signed session cookie
+- Direct-to-S3 presigned uploads for images and videos
+- Image crop presets: original, 1:1, 4:5, and 16:9
+- Image zoom and horizontal/vertical crop positioning
+- WebP, JPEG, and PNG output
+- Upload progress
+- Copy public URL
+- iOS share sheet / Save Image or Save Video workflow
+- Media library with image/video filtering
+- Open, copy, and delete actions
+- iPhone home-screen metadata and icon
+
+## Amplify environment variables
+
+Required:
+
+```text
+MEDIA_HUB_PASSWORD=<your private app password>
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Optional overrides:
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+```text
+S3_BUCKET=latestartbucket
+S3_PREFIX=mobile-phone/
+S3_REGION=us-east-2
+MEDIA_BASE_URL=https://latestartbucket.s3.us-east-2.amazonaws.com
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`MEDIA_BASE_URL` can later be changed to a CloudFront or custom-domain base URL without changing stored object keys.
 
-## Learn More
+## S3 browser upload requirement
 
-To learn more about Next.js, take a look at the following resources:
+Uploads are sent directly from the browser to the presigned S3 URL. The bucket needs a CORS rule that allows `PUT` requests from the Amplify app origin. Keep that rule limited to the actual production origin when possible.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Example:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedOrigins": ["https://main.d79ps74xfj764.amplifyapp.com"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
 
-## Deploy on Vercel
+## Development
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm install
+npm run dev
+```

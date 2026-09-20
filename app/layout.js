@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: "Media Hub",
-  description: "Upload, manage, and share media from your phone.",
+  description: "Upload, process, manage, and share website media from your phone.",
   applicationName: "Media Hub",
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     title: "Media Hub",
@@ -27,6 +28,9 @@ export const metadata = {
 
 export const viewport = {
   themeColor: "#111827",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }) {
