@@ -82,6 +82,20 @@ function fileExtension(name) {
   return match ? match[1] : "";
 }
 
+function validNotesReturn(value) {
+  try {
+    const target = new URL(value);
+    const host = target.hostname.toLowerCase();
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    const isKnownHost = host.endsWith(".amplifyapp.com") || host === "nicholasegner.com" || host.endsWith(".nicholasegner.com");
+    const validProtocol = target.protocol === "https:" || (isLocal && target.protocol === "http:");
+    if (!validProtocol || (!isKnownHost && !isLocal) || !target.pathname.startsWith("/file/")) return null;
+    return target;
+  } catch {
+    return null;
+  }
+}
+
 function xhrUpload(url, file, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -124,9 +138,24 @@ export default function Home() {
   const [bulkCopyLabel, setBulkCopyLabel] = useState("Copy URLs");
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [viewerBusy, setViewerBusy] = useState(false);
+  const [notesContext, setNotesContext] = useState(null);
 
   const isImage = selectedFile?.type?.startsWith("image/");
   const isVideo = selectedFile?.type?.startsWith("video/");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("source") !== "notes") return;
+
+    const draftKey = params.get("draftKey");
+    const returnTarget = validNotesReturn(params.get("returnTo"));
+    if (!draftKey || !returnTarget) return;
+
+    setNotesContext({
+      draftKey,
+      returnTo: returnTarget.toString(),
+    });
+  }, []);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -213,6 +242,26 @@ export default function Home() {
     setShareFile(null);
     setUploadError("");
     setUploadProgress(0);
+  }
+
+  function returnToNotes(item = null) {
+    if (!notesContext) return;
+    const target = validNotesReturn(notesContext.returnTo);
+    if (!target) {
+      window.alert("The Notes Hub return address is no longer valid.");
+      return;
+    }
+
+    target.searchParams.set("mediaReturn", "1");
+    target.searchParams.set("draftKey", notesContext.draftKey);
+
+    if (item) {
+      target.searchParams.set("mediaUrl", item.url);
+      target.searchParams.set("mediaType", item.type || "image");
+      target.searchParams.set("mediaName", item.name || "media");
+    }
+
+    window.location.assign(target.toString());
   }
 
   async function upload() {
@@ -419,6 +468,21 @@ export default function Home() {
         </div>
       </header>
 
+      {notesContext && (
+        <section className={styles.successCard} aria-label="Notes Hub media picker">
+          <div>
+            <span className={styles.successMark}>N</span>
+            <div>
+              <strong>Choosing media for Notes Hub</strong>
+              <p>Upload something new or choose an existing file, then tap Use in Notes.</p>
+            </div>
+          </div>
+          <div className={styles.successActions}>
+            <button type="button" onClick={() => returnToNotes()}>Back to Notes</button>
+          </div>
+        </section>
+      )}
+
       <section className={styles.uploadHero}>
         <label className={styles.uploadButton}>
           <input type="file" accept="image/*,video/*" onChange={pickFile} />
@@ -535,6 +599,7 @@ export default function Home() {
                 </div>
               </div>
               <div className={styles.successActions}>
+                {notesContext && <button type="button" onClick={() => returnToNotes(uploadResult)}>Use in Notes</button>}
                 <button type="button" onClick={() => copyUrl(uploadResult.url)}><CopyIcon /> {copyLabel}</button>
                 <button type="button" onClick={() => shareOrSave()}>Share / Save</button>
                 <button type="button" onClick={() => setActiveItem(uploadResult)}>Preview</button>
@@ -595,6 +660,7 @@ export default function Home() {
                 </div>
                 {!selecting && (
                   <div className={styles.mediaActions}>
+                    {notesContext && <button type="button" onClick={() => returnToNotes(item)}>Use in Notes</button>}
                     <button type="button" onClick={() => copyUrl(item.url)}><CopyIcon /> Copy</button>
                     <button type="button" onClick={() => setActiveItem(item)}>View</button>
                     <button className={styles.deleteButton} type="button" onClick={() => deleteItem(item)}><TrashIcon /> Delete</button>
@@ -641,6 +707,7 @@ export default function Home() {
             </div>
 
             <div className={styles.viewerActions}>
+              {notesContext && <button type="button" onClick={() => returnToNotes(activeItem)}>Use in Notes</button>}
               <button type="button" onClick={() => copyUrl(activeItem.url)}><CopyIcon /> {copyLabel}</button>
               <button type="button" onClick={() => shareLibraryItem(activeItem)} disabled={viewerBusy}>{viewerBusy ? "Preparing…" : "Share / Save"}</button>
               <a href={activeItem.url} target="_blank" rel="noreferrer">Open in Browser</a>
