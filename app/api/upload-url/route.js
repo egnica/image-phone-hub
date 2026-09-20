@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { isAuthenticated } from "@/lib/auth";
 import {
   publicUrlForKey,
   s3,
@@ -29,10 +28,6 @@ function supportedContentType(type) {
 }
 
 export async function POST(request) {
-  if (!isAuthenticated(request)) {
-    return Response.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
   const body = await request.json().catch(() => ({}));
   const { fileName, contentType, size } = body;
 
