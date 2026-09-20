@@ -57,6 +57,22 @@ function RefreshIcon() {
   );
 }
 
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  );
+}
+
 function safeBaseName(name) {
   return String(name || "media").replace(/\.[^.]+$/, "") || "media";
 }
@@ -102,6 +118,12 @@ export default function Home() {
   const [libraryState, setLibraryState] = useState("loading");
   const [libraryError, setLibraryError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [activeItem, setActiveItem] = useState(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set());
+  const [bulkCopyLabel, setBulkCopyLabel] = useState("Copy URLs");
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [viewerBusy, setViewerBusy] = useState(false);
 
   const isImage = selectedFile?.type?.startsWith("image/");
   const isVideo = selectedFile?.type?.startsWith("video/");
@@ -121,6 +143,20 @@ export default function Home() {
     if (isImage) setFileName(fileNameForFormat(selectedFile.name, outputFormat));
     else setFileName(selectedFile.name);
   }, [selectedFile, outputFormat, isImage]);
+
+  useEffect(() => {
+    if (!activeItem) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setActiveItem(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeItem]);
 
   const loadLibrary = useCallback(async () => {
     setLibraryState("loading");
@@ -145,6 +181,11 @@ export default function Home() {
     if (filter === "all") return items;
     return items.filter((item) => item.type === filter);
   }, [items, filter]);
+
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedKeys.has(item.key)),
+    [items, selectedKeys],
+  );
 
   function pickFile(event) {
     const file = event.target.files?.[0];
@@ -219,7 +260,15 @@ export default function Home() {
 
       await xhrUpload(data.uploadUrl, fileToUpload, setUploadProgress);
       setUploadProgress(100);
-      setUploadResult({ url: data.publicUrl, key: data.key, size: fileToUpload.size });
+      const resultItem = {
+        url: data.publicUrl,
+        key: data.key,
+        name: fileToUpload.name,
+        size: fileToUpload.size,
+        type: fileToUpload.type.startsWith("video/") ? "video" : "image",
+        lastModified: new Date().toISOString(),
+      };
+      setUploadResult(resultItem);
       setShareFile(fileToUpload);
       await loadLibrary();
     } catch (error) {
@@ -253,19 +302,111 @@ export default function Home() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function deleteItem(item) {
-    if (!window.confirm(`Delete ${item.name}? This cannot be undone.`)) return;
+  async function shareLibraryItem(item) {
+    if (!item || viewerBusy) return;
+    setViewerBusy(true);
+    try {
+      const response = await fetch(item.url);
+      if (!response.ok) throw new Error("Could not download this file.");
+      const blob = await response.blob();
+      const file = new File([blob], item.name, { type: blob.type || "application/octet-stream" });
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        try {
+          await navigator.share({ files: [file], title: item.name });
+          return;
+        } catch (error) {
+          if (error.name === "AbortError") return;
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = item.name;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      window.alert(error.message || "Could not share this file.");
+    } finally {
+      setViewerBusy(false);
+    }
+  }
+
+  async function deleteFromS3(item) {
     const response = await fetch("/api/media", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: item.key }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      window.alert(data.error || "Could not delete this file.");
+    if (!response.ok) throw new Error(data.error || `Could not delete ${item.name}.`);
+  }
+
+  async function deleteItem(item) {
+    if (!window.confirm(`Delete ${item.name}? This cannot be undone.`)) return;
+    try {
+      await deleteFromS3(item);
+      setItems((current) => current.filter((existing) => existing.key !== item.key));
+      setSelectedKeys((current) => {
+        const next = new Set(current);
+        next.delete(item.key);
+        return next;
+      });
+      if (activeItem?.key === item.key) setActiveItem(null);
+    } catch (error) {
+      window.alert(error.message || "Could not delete this file.");
+    }
+  }
+
+  function toggleSelected(item) {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      if (next.has(item.key)) next.delete(item.key);
+      else next.add(item.key);
+      return next;
+    });
+  }
+
+  function toggleSelectMode() {
+    if (selecting) setSelectedKeys(new Set());
+    setSelecting((current) => !current);
+  }
+
+  async function copySelectedUrls() {
+    const urls = selectedItems.map((item) => item.url);
+    if (!urls.length) return;
+    await navigator.clipboard.writeText(JSON.stringify(urls, null, 2));
+    setBulkCopyLabel("Copied");
+    window.setTimeout(() => setBulkCopyLabel("Copy URLs"), 1400);
+  }
+
+  async function deleteSelected() {
+    if (!selectedItems.length || bulkDeleting) return;
+    const count = selectedItems.length;
+    if (!window.confirm(`Delete ${count} selected file${count === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      for (const item of selectedItems) {
+        await deleteFromS3(item);
+      }
+      const keys = new Set(selectedItems.map((item) => item.key));
+      setItems((current) => current.filter((item) => !keys.has(item.key)));
+      setSelectedKeys(new Set());
+      setSelecting(false);
+    } catch (error) {
+      window.alert(error.message || "Could not delete all selected files.");
+      await loadLibrary();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  function openItem(item) {
+    if (selecting) {
+      toggleSelected(item);
       return;
     }
-    setItems((current) => current.filter((existing) => existing.key !== item.key));
+    setCopyLabel("Copy URL");
+    setActiveItem(item);
   }
 
   return (
@@ -396,7 +537,7 @@ export default function Home() {
               <div className={styles.successActions}>
                 <button type="button" onClick={() => copyUrl(uploadResult.url)}><CopyIcon /> {copyLabel}</button>
                 <button type="button" onClick={() => shareOrSave()}>Share / Save</button>
-                <a href={uploadResult.url} target="_blank" rel="noreferrer">Open</a>
+                <button type="button" onClick={() => setActiveItem(uploadResult)}>Preview</button>
               </div>
             </div>
           )}
@@ -410,7 +551,12 @@ export default function Home() {
             <h2>Your Media</h2>
             <p>{items.length ? `${items.length} file${items.length === 1 ? "" : "s"}` : "Everything in mobile-phone/"}</p>
           </div>
-          <button className={styles.refreshButton} type="button" onClick={loadLibrary} aria-label="Refresh library"><RefreshIcon /></button>
+          <div className={styles.libraryTools}>
+            <button className={`${styles.selectButton} ${selecting ? styles.selectButtonActive : ""}`} type="button" onClick={toggleSelectMode}>
+              {selecting ? "Done" : "Select"}
+            </button>
+            <button className={styles.refreshButton} type="button" onClick={loadLibrary} aria-label="Refresh library"><RefreshIcon /></button>
+          </div>
         </div>
 
         <div className={styles.filterPills}>
@@ -426,29 +572,83 @@ export default function Home() {
         {libraryState === "ready" && filteredItems.length === 0 && <div className={styles.emptyState}>No media here yet.</div>}
 
         <div className={styles.mediaGrid}>
-          {filteredItems.map((item) => (
-            <article className={styles.mediaCard} key={item.key}>
-              <a className={styles.mediaPreview} href={item.url} target="_blank" rel="noreferrer">
-                {item.type === "video" ? (
-                  <video src={item.url} muted playsInline preload="metadata" />
-                ) : (
-                  <img src={item.url} alt={item.name} loading="lazy" />
+          {filteredItems.map((item) => {
+            const isSelected = selectedKeys.has(item.key);
+            return (
+              <article className={`${styles.mediaCard} ${isSelected ? styles.selectedCard : ""}`} key={item.key}>
+                <button className={styles.mediaPreview} type="button" onClick={() => openItem(item)} aria-label={selecting ? `${isSelected ? "Deselect" : "Select"} ${item.name}` : `Preview ${item.name}`}>
+                  {item.type === "video" ? (
+                    <video src={item.url} muted playsInline preload="metadata" />
+                  ) : (
+                    <img src={item.url} alt={item.name} loading="lazy" />
+                  )}
+                  <span className={styles.typeBadge}>{item.type === "video" ? "Video" : "Image"}</span>
+                  {selecting && (
+                    <span className={`${styles.selectionCheck} ${isSelected ? styles.selectionCheckActive : ""}`}>
+                      {isSelected && <CheckIcon />}
+                    </span>
+                  )}
+                </button>
+                <div className={styles.mediaInfo}>
+                  <strong title={item.name}>{item.name}</strong>
+                  <span>{formatBytes(item.size)}{item.lastModified ? ` · ${new Date(item.lastModified).toLocaleDateString()}` : ""}</span>
+                </div>
+                {!selecting && (
+                  <div className={styles.mediaActions}>
+                    <button type="button" onClick={() => copyUrl(item.url)}><CopyIcon /> Copy</button>
+                    <button type="button" onClick={() => setActiveItem(item)}>View</button>
+                    <button className={styles.deleteButton} type="button" onClick={() => deleteItem(item)}><TrashIcon /> Delete</button>
+                  </div>
                 )}
-                <span className={styles.typeBadge}>{item.type === "video" ? "Video" : "Image"}</span>
-              </a>
-              <div className={styles.mediaInfo}>
-                <strong title={item.name}>{item.name}</strong>
-                <span>{formatBytes(item.size)}{item.lastModified ? ` · ${new Date(item.lastModified).toLocaleDateString()}` : ""}</span>
-              </div>
-              <div className={styles.mediaActions}>
-                <button type="button" onClick={() => copyUrl(item.url)}><CopyIcon /> Copy</button>
-                <a href={item.url} target="_blank" rel="noreferrer">Open</a>
-                <button className={styles.deleteButton} type="button" onClick={() => deleteItem(item)}><TrashIcon /> Delete</button>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </section>
+
+      {selecting && (
+        <div className={styles.bulkBar}>
+          <div>
+            <strong>{selectedItems.length} selected</strong>
+            <span>Tap files to add or remove</span>
+          </div>
+          <div className={styles.bulkActions}>
+            <button type="button" onClick={copySelectedUrls} disabled={!selectedItems.length}><CopyIcon /> {bulkCopyLabel}</button>
+            <button className={styles.bulkDelete} type="button" onClick={deleteSelected} disabled={!selectedItems.length || bulkDeleting}><TrashIcon /> {bulkDeleting ? "Deleting…" : "Delete"}</button>
+          </div>
+        </div>
+      )}
+
+      {activeItem && (
+        <div className={styles.viewerBackdrop} role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setActiveItem(null);
+        }}>
+          <section className={styles.viewer} role="dialog" aria-modal="true" aria-label={`Preview ${activeItem.name}`}>
+            <div className={styles.viewerTopbar}>
+              <div>
+                <strong>{activeItem.name}</strong>
+                <span>{formatBytes(activeItem.size)}</span>
+              </div>
+              <button type="button" onClick={() => setActiveItem(null)} aria-label="Close preview"><CloseIcon /></button>
+            </div>
+
+            <div className={styles.viewerMedia}>
+              {activeItem.type === "video" ? (
+                <video src={activeItem.url} controls playsInline preload="metadata" />
+              ) : (
+                <img src={activeItem.url} alt={activeItem.name} />
+              )}
+            </div>
+
+            <div className={styles.viewerActions}>
+              <button type="button" onClick={() => copyUrl(activeItem.url)}><CopyIcon /> {copyLabel}</button>
+              <button type="button" onClick={() => shareLibraryItem(activeItem)} disabled={viewerBusy}>{viewerBusy ? "Preparing…" : "Share / Save"}</button>
+              <a href={activeItem.url} target="_blank" rel="noreferrer">Open in Browser</a>
+              <button className={styles.viewerDelete} type="button" onClick={() => deleteItem(activeItem)}><TrashIcon /> Delete</button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
